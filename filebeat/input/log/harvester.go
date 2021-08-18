@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,6 +72,8 @@ var (
 	ErrInactive     = errors.New("file inactive")
 	ErrClosed       = errors.New("reader closed")
 )
+
+var allDataHealthKeys = []string{"ADUser", "SourceVersion", "SessionID"}
 
 // OutletFactory provides an outlet for the harvester
 type OutletFactory func() channel.Outleter
@@ -351,6 +354,28 @@ func (h *Harvester) Run() error {
 		startingOffset := state.Offset
 		state.Offset += int64(message.Bytes)
 
+		if state.Meta == nil {
+			state.Meta = map[string]string{}
+		}
+
+		if !message.IsEmpty() {
+			text := string(message.Content)
+			for _, field := range allDataHealthKeys {
+				if _, ok := state.Meta[field]; ok {
+					continue
+				}
+
+				sep := fmt.Sprintf("%s=", field)
+				if strings.Contains(text, sep) {
+					// Get anything after the 'key=' as the value
+					parts := strings.SplitN(text, sep, 2)
+					if len(parts) == 2 {
+						state.Meta[field] = parts[1]
+					}
+				}
+			}
+		}
+
 		// Stop harvester in case of an error
 		if !h.onMessage(forwarder, state, message, startingOffset) {
 			return nil
@@ -465,6 +490,17 @@ func (h *Harvester) onMessage(
 			fields = common.MapStr{}
 		}
 		fields["message"] = text
+	}
+
+	for _, field := range allDataHealthKeys {
+		// If the field is already set, don't override
+		if _, ok := fields[field]; ok {
+			continue
+		}
+
+		if v, ok := state.Meta[field]; ok {
+			fields[field] = v
+		}
 	}
 
 	err := forwarder.Send(beat.Event{
