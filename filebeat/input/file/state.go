@@ -39,6 +39,10 @@ type State struct {
 	Meta           map[string]string `json:"meta" struct:"meta,omitempty"`
 	FileStateOS    file.StateOS      `json:"FileStateOS" struct:"FileStateOS"`
 	IdentifierName string            `json:"identifier_name" struct:"identifier_name"`
+
+	// ADMeta is AllData specific metadata.
+	// Use a seperate field than Meta to make it easier to maintain and decouple from the filebeat implementation.
+	ADMeta map[string]string `json:"ad_meta" struct:"ad_meta,omitempty"`
 }
 
 // NewState creates a new file state
@@ -56,11 +60,26 @@ func NewState(fileInfo os.FileInfo, path string, t string, meta map[string]strin
 		TTL:         -1, // By default, state does have an infinite ttl
 		Type:        t,
 		Meta:        meta,
+		ADMeta:      nil,
 	}
 
 	s.Id, s.IdentifierName = identifier.GenerateID(s)
 
 	return s
+}
+
+// Adds the metadata from the State o to State s if not present already
+func (s *State) AddADMeta(o State) {
+	for k, v := range o.ADMeta {
+		if _, ok := s.ADMeta[k]; ok {
+			continue
+		}
+
+		if s.ADMeta == nil {
+			s.ADMeta = map[string]string{}
+		}
+		s.ADMeta[k] = v
+	}
 }
 
 // IsEqual checks if the two states point to the same file.
@@ -71,7 +90,7 @@ func (s *State) IsEqual(c *State) bool {
 // String returns string representation of the struct
 func (s *State) String() string {
 	return fmt.Sprintf(
-		"{Id: %v, Finished: %v, Fileinfo: %v, Source: %v, Offset: %v, Timestamp: %v, TTL: %v, Type: %v, Meta: %v, FileStateOS: %v}",
+		"{Id: %v, Finished: %v, Fileinfo: %v, Source: %v, Offset: %v, Timestamp: %v, TTL: %v, Type: %v, Meta: %v, FileStateOS: %v, ADMeta: %v}",
 		s.Id,
 		s.Finished,
 		s.Fileinfo,
@@ -81,5 +100,6 @@ func (s *State) String() string {
 		s.TTL,
 		s.Type,
 		s.Meta,
-		s.FileStateOS)
+		s.FileStateOS,
+		s.ADMeta)
 }

@@ -254,6 +254,8 @@ func (p *Input) Run() {
 			} else {
 				// Check if existing source on disk and state are the same. Remove if not the case.
 				newState := file.NewState(stat, state.Source, p.config.Type, p.meta, p.fileStateIdentifier)
+				newState.AddADMeta(state)
+
 				if state.IdentifierName != newState.IdentifierName {
 					stateLogger.Debugf("file_identity configuration for file has changed from %s to %s, generating new id", state.IdentifierName, newState.IdentifierName)
 					state.Id, state.IdentifierName = p.fileStateIdentifier.GenerateID(state)
@@ -387,12 +389,28 @@ func (p *Input) matchesFile(filePath string) bool {
 
 // matchesMeta returns true in case the given meta is equal to the one of this input, false if not
 func (p *Input) matchesMeta(meta map[string]string) bool {
-	if len(meta) != len(p.meta) {
+	// To avoid backward incompatibility with the previous version and double indexing
+	// delete the AllDataHealthKeys from the metadata if they aleady exist.
+	excludeKeys := make(map[string]struct{}, len(allDataHealthKeys))
+	for _, key := range allDataHealthKeys {
+		excludeKeys[key] = struct{}{}
+	}
+
+	metaWithoutAllDataKeys := make(map[string]string)
+	for k, v := range meta {
+		if _, ok := excludeKeys[k]; ok {
+			continue
+		}
+
+		metaWithoutAllDataKeys[k] = v
+	}
+
+	if len(metaWithoutAllDataKeys) != len(p.meta) {
 		return false
 	}
 
 	for k, v := range p.meta {
-		if meta[k] != v {
+		if metaWithoutAllDataKeys[k] != v {
 			return false
 		}
 	}
@@ -551,6 +569,7 @@ func (p *Input) scan() {
 			}
 		} else {
 			lastState := p.states.FindPrevious(newState)
+			newState.AddADMeta(lastState)
 			p.harvestExistingFile(logger, newState, lastState)
 		}
 	}

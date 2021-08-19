@@ -203,6 +203,11 @@ func (h *Harvester) Setup() error {
 		return fmt.Errorf("Harvester setup failed. Unexpected encoding line reader error: %s", err)
 	}
 
+	if !h.states.IsNew(h.state) {
+		oldState := h.states.FindPrevious(h.state)
+		h.state.Meta = oldState.Meta
+	}
+
 	h.metrics = newHarvesterProgressMetrics(h.id.String())
 	h.metrics.filename.Set(h.source.Name())
 	h.metrics.started.Set(common.Time(time.Now()).String())
@@ -354,14 +359,10 @@ func (h *Harvester) Run() error {
 		startingOffset := state.Offset
 		state.Offset += int64(message.Bytes)
 
-		if state.Meta == nil {
-			state.Meta = map[string]string{}
-		}
-
 		if !message.IsEmpty() {
 			text := string(message.Content)
 			for _, field := range allDataHealthKeys {
-				if _, ok := state.Meta[field]; ok {
+				if _, ok := state.ADMeta[field]; ok {
 					continue
 				}
 
@@ -370,7 +371,10 @@ func (h *Harvester) Run() error {
 					// Get anything after the 'key=' as the value
 					parts := strings.SplitN(text, sep, 2)
 					if len(parts) == 2 {
-						state.Meta[field] = parts[1]
+						if state.ADMeta == nil {
+							state.ADMeta = map[string]string{}
+						}
+						state.ADMeta[field] = parts[1]
 					}
 				}
 			}
@@ -492,14 +496,10 @@ func (h *Harvester) onMessage(
 		fields["message"] = text
 	}
 
-	for _, field := range allDataHealthKeys {
+	for k, v := range state.ADMeta {
 		// If the field is already set, don't override
-		if _, ok := fields[field]; ok {
-			continue
-		}
-
-		if v, ok := state.Meta[field]; ok {
-			fields[field] = v
+		if _, ok := fields[k]; !ok {
+			fields[k] = v
 		}
 	}
 
