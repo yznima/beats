@@ -203,11 +203,6 @@ func (h *Harvester) Setup() error {
 		return fmt.Errorf("Harvester setup failed. Unexpected encoding line reader error: %s", err)
 	}
 
-	if !h.states.IsNew(h.state) {
-		oldState := h.states.FindPrevious(h.state)
-		h.state.Meta = oldState.Meta
-	}
-
 	h.metrics = newHarvesterProgressMetrics(h.id.String())
 	h.metrics.filename.Set(h.source.Name())
 	h.metrics.started.Set(common.Time(time.Now()).String())
@@ -376,6 +371,9 @@ func (h *Harvester) Run() error {
 						}
 						state.ADMeta[field] = parts[1]
 					}
+
+					// Stop looking after you find the first one
+					break
 				}
 			}
 		}
